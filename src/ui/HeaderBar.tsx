@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { CameraMode, useSimulationStore } from '../simulation/store';
 
 const CAMERA_MODES: { id: CameraMode; label: string }[] = [
@@ -17,11 +17,32 @@ export const HeaderBar: React.FC = () => {
   const qualityMode = useSimulationStore((s) => s.qualityMode);
   const toggleQualityMode = useSimulationStore((s) => s.toggleQualityMode);
 
+  const [fps, setFps] = useState<number>(60);
+
+  useEffect(() => {
+    let frames = 0;
+    let lastTime = performance.now();
+    let rafId = 0;
+
+    const tick = (now: number) => {
+      frames++;
+      if (now - lastTime >= 1000) {
+        setFps(Math.min(120, Math.round((frames * 1000) / (now - lastTime))));
+        frames = 0;
+        lastTime = now;
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, []);
+
   return (
-    <header className="pointer-events-auto flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 bg-[#050914]/85 px-4 py-2.5 backdrop-blur-md">
+    <header className="pointer-events-auto flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 bg-[#050914]/88 px-4 py-2.5 backdrop-blur-md">
       {/* Left: Museum Exhibit Brand & Illustrative Disclaimer Pill */}
       <div className="flex items-center gap-3">
-        <div className="flex h-7 w-7 items-center justify-center rounded border border-orange-500/50 bg-orange-500/10 font-mono text-xs font-semibold text-orange-400">
+        <div className="flex h-7 w-7 items-center justify-center rounded border border-orange-500/50 bg-orange-500/10 font-mono text-xs font-semibold text-orange-400 shadow-[0_0_12px_rgba(249,115,22,0.2)]">
           AV
         </div>
         <div>
@@ -102,18 +123,21 @@ export const HeaderBar: React.FC = () => {
           Labels
         </button>
 
-        {/* Reduced Quality Mode Toggle */}
+        {/* Reduced Quality Mode Toggle + Live FPS Badge */}
         <button
           type="button"
           onClick={toggleQualityMode}
           title="Toggle Reduced Quality Mode for slower devices"
-          className={`rounded border px-2.5 py-1 font-mono text-[11px] transition-colors ${
+          className={`flex items-center gap-2 rounded border px-2.5 py-1 font-mono text-[11px] transition-colors ${
             qualityMode === 'reduced'
               ? 'border-amber-500/60 bg-amber-500/15 text-amber-200'
               : 'border-slate-800 bg-slate-950/80 text-slate-300 hover:border-slate-700 hover:text-white'
           }`}
         >
-          Quality: {qualityMode === 'high' ? 'High (4K)' : 'Reduced (2K)'}
+          <span>Quality: {qualityMode === 'high' ? 'High (4K)' : 'Reduced (2K)'}</span>
+          <span className="rounded bg-slate-900 px-1.5 py-0.2 text-[10px] text-emerald-400">
+            {fps} FPS
+          </span>
         </button>
       </div>
     </header>

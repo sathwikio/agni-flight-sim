@@ -44,20 +44,33 @@ const EARTH_FRAGMENT_SHADER = /* glsl */ `
   void main() {
     #include <logdepthbuf_fragment>
 
-    vec3 N = normalize(vWorldNormal);
+    vec3 NBase = normalize(vWorldNormal);
     vec3 V = normalize(cameraPosition - vWorldPosition);
     vec3 L = normalize(uSunDir);
 
-    float ndotl = dot(N, L);
-    float dayFactor = smoothstep(-0.16, 0.22, ndotl);
-    float twilightFactor = smoothstep(-0.24, 0.06, ndotl) * (1.0 - smoothstep(0.0, 0.34, ndotl));
-
-    vec3 daySample = texture2D(uDayMap, vUv).rgb;
-    vec3 nightSample = texture2D(uNightMap, vUv).rgb;
-    // R = elevation/bump, G = land mask/roughness, B = clouds
+    // Sample R = elevation, G = land roughness mask, B = clouds
     vec3 brc = texture2D(uSpecCloudsMap, vUv).rgb;
     float landMask = brc.g;
     float oceanMask = 1.0 - smoothstep(0.15, 0.45, landMask);
+
+    // Topographic bump perturbation from R channel over continents (Himalayas, Andes, etc.)
+    vec2 texStep = vec2(1.0 / 4096.0, 1.0 / 2048.0);
+    float hC = brc.r;
+    float hU = texture2D(uSpecCloudsMap, vUv + vec2(texStep.x, 0.0)).r;
+    float hV = texture2D(uSpecCloudsMap, vUv + vec2(0.0, texStep.y)).r;
+    vec3 upRef = abs(NBase.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    vec3 tangent = normalize(cross(upRef, NBase));
+    vec3 bitangent = cross(NBase, tangent);
+    float bumpScale = 2.6 * smoothstep(0.2, 0.6, landMask);
+    vec3 N = normalize(NBase + (tangent * (hC - hU) + bitangent * (hC - hV)) * bumpScale);
+
+    float ndotl = dot(N, L);
+    float ndotlSmooth = dot(NBase, L);
+    float dayFactor = smoothstep(-0.16, 0.22, ndotlSmooth);
+    float twilightFactor = smoothstep(-0.24, 0.06, ndotlSmooth) * (1.0 - smoothstep(0.0, 0.34, ndotlSmooth));
+
+    vec3 daySample = texture2D(uDayMap, vUv).rgb;
+    vec3 nightSample = texture2D(uNightMap, vUv).rgb;
 
     // Subtle cloud shadow on surface
     vec2 cloudUv = vec2(fract(vUv.x + uCloudDrift * 0.6), vUv.y);
@@ -65,25 +78,26 @@ const EARTH_FRAGMENT_SHADER = /* glsl */ `
 
     // Diffuse illumination with soft wrap around terminator
     float diffuse = max(ndotl, 0.0);
-    float shadowedDiffuse = diffuse * (1.0 - cloudShadow * 0.28);
-    vec3 dayLit = daySample * (0.09 + 0.98 * pow(shadowedDiffuse, 0.92));
+    float shadowedDiffuse = diffuse * (1.0 - cloudShadow * 0.32);
+    vec3 dayLit = daySample * (0.08 + 1.02 * pow(shadowedDiffuse, 0.92));
 
-    // Ocean specular reflection (Blinn-Phong sun glint over water)
+    // Ocean specular reflection (Blinn-Phong sun glint + broad sky sheen over water)
     vec3 H = normalize(L + V);
-    float specBase = pow(max(dot(N, H), 0.0), 42.0);
-    vec3 oceanGlint = vec3(1.0, 0.93, 0.82) * specBase * oceanMask * dayFactor * 0.42;
+    float specSharp = pow(max(dot(NBase, H), 0.0), 56.0);
+    float specBroad = pow(max(dot(NBase, H), 0.0), 12.0);
+    vec3 oceanGlint = (vec3(1.0, 0.94, 0.84) * specSharp * 0.48 + vec3(0.35, 0.62, 0.95) * specBroad * 0.14) * oceanMask * dayFactor;
 
     // Warm atmospheric sunset band along the day-night terminator
-    vec3 twilightTint = vec3(0.95, 0.38, 0.12) * twilightFactor * (0.35 + 0.35 * oceanMask);
+    vec3 twilightTint = vec3(0.96, 0.40, 0.14) * twilightFactor * (0.38 + 0.32 * oceanMask);
 
     // Night-side city lights (masked out over open oceans and bright daylight)
-    float nightMask = 1.0 - smoothstep(-0.12, 0.14, ndotl);
-    vec3 cityLights = pow(nightSample, vec3(1.35)) * vec3(1.35, 1.05, 0.72) * nightMask * 1.65;
-    vec3 nightAmbient = daySample * vec3(0.035, 0.055, 0.095) * nightMask;
+    float nightMask = 1.0 - smoothstep(-0.12, 0.14, ndotlSmooth);
+    vec3 cityLights = pow(nightSample, vec3(1.3)) * vec3(1.4, 1.08, 0.74) * nightMask * 1.75;
+    vec3 nightAmbient = daySample * vec3(0.035, 0.058, 0.10) * nightMask;
 
     // Subtle Rayleigh limb scatter on the planetary surface edge
-    float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.2);
-    vec3 limbScatter = mix(vec3(0.08, 0.24, 0.55), vec3(0.32, 0.64, 1.0), dayFactor) * fresnel * (0.18 + 0.52 * dayFactor);
+    float fresnel = pow(1.0 - max(dot(NBase, V), 0.0), 3.1);
+    vec3 limbScatter = mix(vec3(0.08, 0.24, 0.55), vec3(0.34, 0.66, 1.0), dayFactor) * fresnel * (0.20 + 0.55 * dayFactor);
 
     vec3 color = dayLit + oceanGlint + twilightTint + cityLights + nightAmbient + limbScatter;
     gl_FragColor = vec4(color, 1.0);
@@ -124,7 +138,7 @@ const CLOUDS_FRAGMENT_SHADER = /* glsl */ `
 
     vec2 uvShifted = vec2(fract(vUv.x + uCloudDrift), vUv.y);
     float cloudDensity = texture2D(uSpecCloudsMap, uvShifted).b;
-    float alpha = smoothstep(0.12, 0.85, cloudDensity) * 0.72;
+    float alpha = smoothstep(0.11, 0.84, cloudDensity) * 0.74;
     if (alpha < 0.01) discard;
 
     vec3 N = normalize(vWorldNormal);
@@ -134,8 +148,8 @@ const CLOUDS_FRAGMENT_SHADER = /* glsl */ `
     float dayLight = smoothstep(-0.18, 0.28, ndotl);
     float twilight = smoothstep(-0.22, 0.04, ndotl) * (1.0 - smoothstep(0.02, 0.28, ndotl));
 
-    vec3 litCloud = mix(vec3(0.03, 0.05, 0.09), vec3(0.96, 0.98, 1.0), dayLight);
-    litCloud += vec3(0.95, 0.45, 0.18) * twilight * 0.55;
+    vec3 litCloud = mix(vec3(0.03, 0.05, 0.09), vec3(0.97, 0.98, 1.0), dayLight);
+    litCloud += vec3(0.96, 0.46, 0.18) * twilight * 0.58;
 
     gl_FragColor = vec4(litCloud, alpha);
   }
@@ -175,21 +189,21 @@ const ATMOSPHERE_FRAGMENT_SHADER = /* glsl */ `
 
     // Back-face limb intensity
     float viewDot = dot(N, V);
-    float rim = pow(clamp(1.0 + viewDot, 0.0, 1.0), 2.35);
+    float rim = pow(clamp(1.0 + viewDot, 0.0, 1.0), 2.3);
 
     float sunFacing = dot(N, L);
     float daySide = smoothstep(-0.35, 0.35, sunFacing);
     float twilightBand = smoothstep(-0.35, 0.0, sunFacing) * (1.0 - smoothstep(0.0, 0.38, sunFacing));
 
-    vec3 rayleighBlue = vec3(0.22, 0.58, 1.0);
-    vec3 sunsetAmber = vec3(0.98, 0.44, 0.16);
-    vec3 nightLimb = vec3(0.04, 0.11, 0.25);
+    vec3 rayleighBlue = vec3(0.24, 0.60, 1.0);
+    vec3 sunsetAmber = vec3(0.98, 0.45, 0.16);
+    vec3 nightLimb = vec3(0.04, 0.12, 0.26);
 
     vec3 scatterColor = mix(nightLimb, rayleighBlue, daySide);
-    scatterColor = mix(scatterColor, sunsetAmber, twilightBand * 0.65);
+    scatterColor = mix(scatterColor, sunsetAmber, twilightBand * 0.68);
 
-    float alpha = rim * (0.16 + 0.72 * daySide);
-    gl_FragColor = vec4(scatterColor * (0.85 + 0.5 * daySide), alpha);
+    float alpha = rim * (0.18 + 0.74 * daySide);
+    gl_FragColor = vec4(scatterColor * (0.88 + 0.52 * daySide), alpha);
   }
 `;
 

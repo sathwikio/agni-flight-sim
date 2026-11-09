@@ -1,11 +1,14 @@
-import React, { useEffect } from 'react';
-import { SceneCanvas } from './scene/SceneCanvas';
+import React, { Suspense, lazy, useEffect } from 'react';
 import { STAGE_DEFINITIONS } from './simulation/stages';
 import { useSimulationStore } from './simulation/store';
 import { EducationalPanel } from './ui/EducationalPanel';
 import { HeaderBar } from './ui/HeaderBar';
 import { TelemetryPanel } from './ui/TelemetryPanel';
 import { TimelineDock } from './ui/TimelineDock';
+
+const SceneCanvas = lazy(() =>
+  import('./scene/SceneCanvas').then((m) => ({ default: m.SceneCanvas }))
+);
 
 export const App: React.FC = () => {
   const togglePlay = useSimulationStore((s) => s.togglePlay);
@@ -40,7 +43,15 @@ export const App: React.FC = () => {
     <div className="relative h-screen w-screen overflow-hidden bg-[#03060c] text-slate-100">
       {/* Full-viewport 3D WebGL Scene */}
       <div className="absolute inset-0 z-0">
-        <SceneCanvas />
+        <Suspense
+          fallback={
+            <div className="flex h-full w-full items-center justify-center bg-[#03060c] font-mono text-xs tracking-widest text-orange-400 uppercase">
+              Initializing 3D Orbital Telemetry Engine…
+            </div>
+          }
+        >
+          <SceneCanvas />
+        </Suspense>
       </div>
 
       {/* Subtle vignette & telemetry corner grid overlay */}

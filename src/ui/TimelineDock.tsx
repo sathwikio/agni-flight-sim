@@ -37,19 +37,18 @@ export const TimelineDock: React.FC = () => {
   return (
     <footer
       aria-label="Mission Timeline and Playback Controls"
-      className="pointer-events-auto border-t border-slate-800/90 bg-[#050914]/90 px-4 py-3 text-slate-100 backdrop-blur-md"
+      className="pointer-events-auto border-t border-slate-800/90 bg-[#050914]/92 px-3 pt-2 pb-[max(0.6rem,env(safe-area-inset-bottom))] text-slate-100 backdrop-blur-md sm:px-4 sm:py-3"
     >
-      <div className="mx-auto flex max-w-7xl flex-col gap-2.5">
-        {/* Five Selectable Flight Stages */}
+      <div className="mx-auto flex max-w-7xl flex-col gap-2">
+        {/* Five Selectable Flight Stages: Single-row horizontal scroll on mobile, 5-col grid on sm+ */}
         <div
-          className="grid grid-cols-2 gap-1.5 sm:grid-cols-5"
+          className="no-scrollbar flex gap-1.5 overflow-x-auto pb-0.5 sm:grid sm:grid-cols-5 sm:overflow-visible sm:pb-0"
           role="tablist"
           aria-label="Selectable Flight Stages"
         >
           {STAGE_DEFINITIONS.map((st) => {
             const isActive = stageId === st.id;
             const isCompleted = u > st.endU;
-            // Progress within this specific stage
             const stageProgress = Math.max(
               0,
               Math.min(1, (u - st.startU) / (st.endU - st.startU))
@@ -62,7 +61,7 @@ export const TimelineDock: React.FC = () => {
                 aria-selected={isActive}
                 type="button"
                 onClick={() => selectStage(st.id)}
-                className={`group relative overflow-hidden rounded border px-3 py-1.5 text-left transition-all ${
+                className={`group relative min-w-[118px] shrink-0 overflow-hidden rounded border px-2.5 py-1.5 text-left transition-all sm:min-w-0 sm:px-3 ${
                   isActive
                     ? 'border-orange-500 bg-orange-500/15 text-white shadow-[0_0_16px_rgba(249,115,22,0.18)]'
                     : isCompleted
@@ -70,7 +69,7 @@ export const TimelineDock: React.FC = () => {
                     : 'border-slate-800/80 bg-slate-950/70 text-slate-400 hover:border-slate-700 hover:text-slate-200'
                 }`}
               >
-                <div className="flex items-center justify-between font-mono text-[10px]">
+                <div className="flex items-center justify-between font-mono text-[9px] sm:text-[10px]">
                   <span
                     className={
                       isActive
@@ -86,10 +85,10 @@ export const TimelineDock: React.FC = () => {
                     {Math.round(stageProgress * 100)}%
                   </span>
                 </div>
-                <div className="mt-0.5 truncate text-xs font-semibold">
+                <div className="mt-0.5 truncate text-[11px] font-semibold sm:text-xs">
                   {st.name}
                 </div>
-                <div className="truncate text-[10px] text-slate-400">
+                <div className="hidden truncate text-[10px] text-slate-400 sm:block">
                   {st.subtitle}
                 </div>
 
@@ -106,36 +105,38 @@ export const TimelineDock: React.FC = () => {
         </div>
 
         {/* Deterministic Scrubber Bar + Transport & Speed Controls */}
-        <div className="flex flex-col items-stretch justify-between gap-3 md:flex-row md:items-center">
+        <div className="flex flex-col-reverse items-stretch justify-between gap-2 md:flex-row md:items-center md:gap-3">
           {/* Left: Transport Controls (Play/Pause, Restart, Speed) */}
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={togglePlay}
-              aria-label={playing ? 'Pause simulation' : 'Play simulation'}
-              className="flex items-center gap-1.5 rounded border border-orange-500 bg-orange-500 px-3.5 py-1.5 font-mono text-xs font-semibold text-slate-950 transition-colors hover:bg-orange-400"
-            >
-              {playing ? (
-                <>
-                  <span>❚❚</span>
-                  <span>PAUSE</span>
-                </>
-              ) : (
-                <>
-                  <span>▶</span>
-                  <span>{u >= 0.999 ? 'REPLAY' : 'PLAY'}</span>
-                </>
-              )}
-            </button>
+          <div className="flex items-center justify-between gap-2 md:justify-start">
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={togglePlay}
+                aria-label={playing ? 'Pause simulation' : 'Play simulation'}
+                className="flex items-center gap-1.5 rounded border border-orange-500 bg-orange-500 px-3 py-1.5 font-mono text-[11px] font-semibold text-slate-950 transition-colors hover:bg-orange-400 sm:px-3.5 sm:text-xs"
+              >
+                {playing ? (
+                  <>
+                    <span>❚❚</span>
+                    <span>PAUSE</span>
+                  </>
+                ) : (
+                  <>
+                    <span>▶</span>
+                    <span>{u >= 0.999 ? 'REPLAY' : 'PLAY'}</span>
+                  </>
+                )}
+              </button>
 
-            <button
-              type="button"
-              onClick={restart}
-              aria-label="Restart simulation"
-              className="rounded border border-slate-700 bg-slate-900/90 px-2.5 py-1.5 font-mono text-xs text-slate-200 transition-colors hover:border-orange-400 hover:text-white"
-            >
-              ↺ RESTART
-            </button>
+              <button
+                type="button"
+                onClick={restart}
+                aria-label="Restart simulation"
+                className="rounded border border-slate-700 bg-slate-900/90 px-2.5 py-1.5 font-mono text-[11px] text-slate-200 transition-colors hover:border-orange-400 hover:text-white sm:text-xs"
+              >
+                ↺ <span className="hidden xs:inline">RESTART</span>
+              </button>
+            </div>
 
             {/* Playback Speed Multiplier */}
             <div
@@ -150,7 +151,7 @@ export const TimelineDock: React.FC = () => {
                     key={s}
                     type="button"
                     onClick={() => setSpeed(s)}
-                    className={`rounded px-2 py-1 font-mono text-[11px] transition-colors ${
+                    className={`rounded px-1.5 py-1 font-mono text-[10px] transition-colors sm:px-2 sm:text-[11px] ${
                       active
                         ? 'bg-orange-500/25 text-orange-300 border border-orange-500/60 font-semibold'
                         : 'text-slate-400 hover:text-white'
@@ -181,6 +182,9 @@ export const TimelineDock: React.FC = () => {
                   </button>
                 ))}
               </div>
+              <span className="text-[9px] text-slate-400 sm:hidden">
+                Drag slider to scrub flight
+              </span>
               <span>{formatShortTime(MISSION_DURATION_S)}</span>
             </div>
 
@@ -210,7 +214,7 @@ export const TimelineDock: React.FC = () => {
                 value={u}
                 aria-label="Mission timeline scrubber"
                 onChange={(e) => setU(parseFloat(e.target.value), false)}
-                className="relative z-10 h-4 w-full cursor-pointer appearance-none bg-transparent accent-orange-500"
+                className="relative z-10 h-6 w-full cursor-pointer appearance-none bg-transparent accent-orange-500 sm:h-4"
               />
             </div>
           </div>

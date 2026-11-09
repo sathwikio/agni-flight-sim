@@ -20,6 +20,7 @@ export const EducationalPanel: React.FC = () => {
   const selectedConceptId = useSimulationStore((s) => s.selectedConceptId);
   const setSelectedConceptId = useSimulationStore((s) => s.setSelectedConceptId);
   const setU = useSimulationStore((s) => s.setU);
+  const setMobilePanel = useSimulationStore((s) => s.setMobilePanel);
   const [collapsed, setCollapsed] = useState(false);
 
   const stageDef =
@@ -35,23 +36,33 @@ export const EducationalPanel: React.FC = () => {
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.35 }}
       aria-label="Aerospace Physics & Educational Explanations"
-      className="pointer-events-auto w-full max-w-[360px] rounded border border-slate-800/90 bg-[#050914]/85 text-slate-100 shadow-2xl backdrop-blur-md"
+      className="pointer-events-auto max-h-[62dvh] w-full max-w-[380px] overflow-y-auto rounded border border-slate-800/90 bg-[#050914]/92 text-slate-100 shadow-2xl backdrop-blur-md lg:max-h-none lg:max-w-[360px] lg:overflow-visible"
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-800/80 px-3.5 py-2">
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-800/80 bg-[#050914]/95 px-3.5 py-2 backdrop-blur-md">
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-sky-400" />
           <span className="font-mono text-[11px] font-semibold tracking-widest text-slate-200 uppercase">
             Science & Flight Physics
           </span>
         </div>
-        <button
-          type="button"
-          onClick={() => setCollapsed((c) => !c)}
-          className="rounded border border-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-400 hover:text-white lg:hidden"
-        >
-          {collapsed ? 'Expand' : 'Minimize'}
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setMobilePanel('none')}
+            aria-label="Close physics drawer"
+            className="rounded border border-slate-700 bg-slate-900 px-2 py-0.5 font-mono text-[10px] text-slate-300 hover:text-white lg:hidden"
+          >
+            ✕ Close
+          </button>
+          <button
+            type="button"
+            onClick={() => setCollapsed((c) => !c)}
+            className="hidden rounded border border-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-400 hover:text-white"
+          >
+            {collapsed ? 'Expand' : 'Minimize'}
+          </button>
+        </div>
       </div>
 
       {!collapsed && (

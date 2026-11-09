@@ -10,6 +10,10 @@ import { STAGE_DEFINITIONS } from './stages';
 export type PlaybackSpeed = 0.25 | 0.5 | 1 | 2 | 4;
 export type CameraMode = 'follow' | 'earth' | 'free';
 export type QualityMode = 'high' | 'reduced';
+export type MobilePanelTab = 'none' | 'telemetry' | 'science';
+
+const isSmallMobileDevice =
+  typeof window !== 'undefined' && window.innerWidth < 768;
 
 export interface SimulationState {
   /** Normalized timeline progress u in [0, 1] */
@@ -26,12 +30,14 @@ export interface SimulationState {
   showTrajectory: boolean;
   /** Show / hide 3D in-scene flight milestone labels */
   showFlightLabels: boolean;
-  /** Graphics quality preset ('high' or 'reduced' for slower devices) */
+  /** Graphics quality preset ('high' or 'reduced' for slower/mobile devices) */
   qualityMode: QualityMode;
   /** Monotonically incremented counter when user explicitly triggers a camera jump/stage select */
   cameraSnapNonce: number;
   /** Selected science topic tab inside the educational panel (null = follow current stage default) */
   selectedConceptId: string | null;
+  /** Which floating drawer is open on mobile/tablet screens (< 1024px) */
+  mobilePanel: MobilePanelTab;
 
   // Actions
   setU: (u: number, fromScrub?: boolean) => void;
@@ -47,6 +53,7 @@ export interface SimulationState {
   setQualityMode: (mode: QualityMode) => void;
   toggleQualityMode: () => void;
   setSelectedConceptId: (id: string | null) => void;
+  setMobilePanel: (panel: MobilePanelTab) => void;
 }
 
 export const PLAYBACK_SPEEDS: PlaybackSpeed[] = [0.25, 0.5, 1, 2, 4];
@@ -58,10 +65,11 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   stageId: 'launch',
   cameraMode: 'follow',
   showTrajectory: true,
-  showFlightLabels: true,
-  qualityMode: 'high',
+  showFlightLabels: !isSmallMobileDevice,
+  qualityMode: isSmallMobileDevice ? 'reduced' : 'high',
   cameraSnapNonce: 0,
   selectedConceptId: null,
+  mobilePanel: 'none',
 
   setU: (rawU, fromScrub = false) => {
     const nextU = clamp(rawU, 0, 1);
@@ -128,7 +136,6 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   selectStage: (targetStageId) => {
     const def = STAGE_DEFINITIONS.find((s) => s.id === targetStageId);
     if (!def) return;
-    // Jump to start of launch, or slightly inside the selected phase so its visual signature is immediately clear
     const jumpU = targetStageId === 'launch' ? 0.008 : def.startU + 0.006;
     set((state) => ({
       u: clamp(jumpU, 0, 1),
@@ -156,4 +163,9 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
     })),
 
   setSelectedConceptId: (selectedConceptId) => set({ selectedConceptId }),
+
+  setMobilePanel: (mobilePanel) =>
+    set((state) => ({
+      mobilePanel: state.mobilePanel === mobilePanel ? 'none' : mobilePanel,
+    })),
 }));

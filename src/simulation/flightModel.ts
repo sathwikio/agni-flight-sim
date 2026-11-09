@@ -19,17 +19,12 @@ export const KM_TO_UNITS = EARTH_RADIUS_UNITS / EARTH_RADIUS_KM;
 /**
  * Visual altitude exaggeration for orbital/global readability while keeping
  * telemetry values in realistic illustrative kilometers.
- * At 800 km apogee, true scale on R=10 is +1.255 units; visual scale is ~2.35 units.
  */
 export const ALTITUDE_VISUAL_EXAGGERATION = 1.85;
 
-/**
- * Vehicle size scale in world units at ground level and in orbital view.
- * Dynamically blended with camera distance so the vehicle is both inspectable
- * on the launch pad and visible during powered ascent / re-entry.
- */
-export const MISSION_DURATION_S = 900; // 15 minutes illustrative flight duration
-export const PLAYBACK_REALTIME_DURATION_S = 75; // 1x playback completes full mission in 75 seconds
+export const MISSION_DURATION_S = 900; // 15 minutes (900 s) illustrative mission time
+export const PLAYBACK_REALTIME_DURATION_S = 75; // 1x playback completes 900s mission in 75s (12x time compression)
+export const TIME_COMPRESSION_AT_1X = MISSION_DURATION_S / PLAYBACK_REALTIME_DURATION_S; // 12
 
 export type StageId = 'launch' | 'ascent' | 'midcourse' | 'reentry' | 'impact';
 
@@ -60,18 +55,28 @@ export const TARGET_ZONE: LatLon = {
 };
 
 export const APOGEE_ALTITUDE_KM = 780; // Illustrative lofted apogee
+export const ENTRY_INTERFACE_ALTITUDE_KM = 120; // Illustrative atmospheric entry interface
+export const KARMAN_LINE_ALTITUDE_KM = 100; // Internationally recognized space boundary
 
-// Normalized timeline landmarks (u in [0, 1])
+/**
+ * Normalized timeline landmarks (u in [0, 1]).
+ * Every value here is synchronized with STAGE_RANGES and the monotone cubic
+ * altitude spline so timeline markers, phase boundaries, 3D scene annotations,
+ * and telemetry readouts always agree.
+ */
 export const TIMELINE_EVENTS = {
   ignitionStart: 0.0,
   liftoff: 0.035,
+  ascentStart: 0.075,
   stage1Separation: 0.125,
-  stage2Separation: 0.215,
-  stage3Burnout: 0.28, // End of powered ascent / start of midcourse free-flight
-  apogee: 0.54,
-  reentryInterface: 0.78, // ~120 km entry interface
-  peakHeating: 0.885,
-  impact: 1.0,
+  stage2Separation: 0.2,
+  stage3Burnout: 0.28, // End of powered ascent (255 km) / start of midcourse free-flight
+  apogee: 0.53, // Exact peak altitude: 780.0 km
+  reentryInterface: 0.82, // Exact atmospheric entry interface: 120.0 km (Start of Phase 4)
+  karmanLine: 0.845, // Exact Kármán line: 100.0 km (Acoustics / Mach boundary)
+  peakHeating: 0.895, // Peak bow-shock plasma heating & deceleration (~52 km)
+  terminalPhaseStart: 0.955, // Start of Phase 5 Impact Visualization (18.0 km)
+  impact: 1.0, // Target Zone arrival (0.0 km)
 } as const;
 
 export interface StageRange {
@@ -82,11 +87,31 @@ export interface StageRange {
 }
 
 export const STAGE_RANGES: StageRange[] = [
-  { id: 'launch', index: 0, startU: 0.0, endU: 0.075 },
-  { id: 'ascent', index: 1, startU: 0.075, endU: 0.28 },
-  { id: 'midcourse', index: 2, startU: 0.28, endU: 0.78 },
-  { id: 'reentry', index: 3, startU: 0.78, endU: 0.955 },
-  { id: 'impact', index: 4, startU: 0.955, endU: 1.0 },
+  { id: 'launch', index: 0, startU: 0.0, endU: TIMELINE_EVENTS.ascentStart },
+  {
+    id: 'ascent',
+    index: 1,
+    startU: TIMELINE_EVENTS.ascentStart,
+    endU: TIMELINE_EVENTS.stage3Burnout,
+  },
+  {
+    id: 'midcourse',
+    index: 2,
+    startU: TIMELINE_EVENTS.stage3Burnout,
+    endU: TIMELINE_EVENTS.reentryInterface,
+  },
+  {
+    id: 'reentry',
+    index: 3,
+    startU: TIMELINE_EVENTS.reentryInterface,
+    endU: TIMELINE_EVENTS.terminalPhaseStart,
+  },
+  {
+    id: 'impact',
+    index: 4,
+    startU: TIMELINE_EVENTS.terminalPhaseStart,
+    endU: 1.0,
+  },
 ];
 
 export interface SeparatedStageState {
@@ -97,9 +122,11 @@ export interface SeparatedStageState {
 }
 
 export interface FlightSample {
-  /** Normalized progress in [0, 1] */
+  /** Normalized mission progress in [0, 1] */
   u: number;
-  /** Illustrative mission elapsed time in seconds (T-5s to T+895s) */
+  /** Normalized progress within the current phase in [0, 1] */
+  phaseProgress: number;
+  /** Illustrative mission elapsed time in seconds (0s to 900s) */
   missionTimeS: number;
   /** Active stage identifier */
   stageId: StageId;
@@ -115,9 +142,11 @@ export interface FlightSample {
   velocityKmh: number;
   /** Illustrative speed in km/s */
   velocityKms: number;
-  /** Local Mach number when below 105 km, or null in vacuum/exosphere */
+  /** Local Mach number when at or below the 100 km Kármán line, or null in space (>100 km) */
   machNumber: number | null;
-  /** Local speed of sound in m/s (null in space) */
+  /** Reason Mach is unavailable when machNumber is null */
+  machUnavailableReason: string | null;
+  /** Local speed of sound in m/s (null above 100 km Kármán line) */
   localSoundSpeedMs: number | null;
   /** Downrange ground distance traveled in km */
   downrangeKm: number;
@@ -160,7 +189,6 @@ export interface FlightSample {
   separatedStage3: SeparatedStageState;
 }
 
-// Smoothstep & math utilities
 export function clamp(val: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, val));
 }
@@ -213,47 +241,115 @@ export function sampleGreatCircleUnitVector(s: number): THREE.Vector3 {
 
 /**
  * Maps normalized timeline `u ∈ [0, 1]` to downrange ground progress `s ∈ [0, 1]`.
- * Remains at 0 during pre-launch ignition and vertical rise, accelerates through
- * powered ascent, coasts steadily across midcourse, and decelerates slightly
- * during steep atmospheric re-entry.
  */
 export function computeRangeProgress(u: number): number {
   const { liftoff, stage3Burnout, reentryInterface } = TIMELINE_EVENTS;
   if (u <= liftoff) return 0;
+  if (u >= 1.0) return 1;
 
   const t = clamp((u - liftoff) / (1 - liftoff), 0, 1);
-  // Blend between a smooth pitch-over ease-in and steady orbital angular rate
-  const boostEase = Math.pow(t, 1.55);
+  const boostEase = Math.pow(t, 1.48);
   const coastLinear = smoothstep(0.0, 1.0, t);
   const blend = smoothstep(liftoff, stage3Burnout, u);
-  const raw = THREE.MathUtils.lerp(boostEase, coastLinear, blend * 0.65);
+  const raw = THREE.MathUtils.lerp(boostEase, coastLinear, blend * 0.62);
 
-  // Slight steepening at terminal atmospheric entry
-  const terminalDrag = smoothstep(reentryInterface, 1.0, u) * 0.018 * (1 - t);
+  const terminalDrag = smoothstep(reentryInterface, 1.0, u) * 0.014 * (1 - t);
   return clamp(raw - terminalDrag, 0, 1);
 }
 
 /**
- * Illustrative altitude profile `h(u)` in kilometers.
- * - Pre-liftoff (`u <= liftoff`): 0 km (on launch canister/pad)
- * - Powered ascent (`liftoff -> stage3Burnout`): smooth climb to ~255 km
- * - Midcourse ballistic arc (`stage3Burnout -> reentryInterface`): elliptic-like
- *   free-flight arch peaking at `APOGEE_ALTITUDE_KM` (780 km) around `u = 0.54`
- * - Atmospheric re-entry (`reentryInterface -> 1.0`): descent from ~120 km to 0 km
+ * Calibrated altitude control knots `[u, altitudeKm]` using Fritsch-Carlson
+ * monotone cubic Hermite interpolation so every timeline marker and phase boundary
+ * hits its exact documented altitude with C1 smoothness and zero overshoot.
  */
-export function computeAltitudeKm(u: number): number {
-  const { liftoff } = TIMELINE_EVENTS;
-  if (u <= liftoff) return 0;
-  if (u >= 1.0) return 0;
+const ALTITUDE_KNOTS: readonly [number, number][] = [
+  [0.0, 0.0],
+  [TIMELINE_EVENTS.liftoff, 0.0], // 0.035 -> 0 km
+  [TIMELINE_EVENTS.ascentStart, 24.0], // 0.075 -> 24 km (Phase 2 start)
+  [TIMELINE_EVENTS.stage1Separation, 68.0], // 0.125 -> 68 km (S1 Sep)
+  [TIMELINE_EVENTS.stage2Separation, 150.0], // 0.200 -> 150 km (S2 Sep)
+  [TIMELINE_EVENTS.stage3Burnout, 255.0], // 0.280 -> 255 km (MECO / Phase 3 start)
+  [0.4, 580.0],
+  [TIMELINE_EVENTS.apogee, APOGEE_ALTITUDE_KM], // 0.530 -> 780 km (Exact Apogee)
+  [0.68, 520.0],
+  [TIMELINE_EVENTS.reentryInterface, ENTRY_INTERFACE_ALTITUDE_KM], // 0.820 -> 120 km (Exact Entry Interface / Phase 4 start)
+  [TIMELINE_EVENTS.karmanLine, KARMAN_LINE_ALTITUDE_KM], // 0.845 -> 100 km (Exact Kármán Line)
+  [TIMELINE_EVENTS.peakHeating, 52.0], // 0.895 -> 52 km (Peak Heating)
+  [TIMELINE_EVENTS.terminalPhaseStart, 18.0], // 0.955 -> 18 km (Phase 5 Impact start)
+  [1.0, 0.0], // 1.000 -> 0 km (Target Zone arrival)
+];
 
-  const s = computeRangeProgress(u);
-  // Symmetric arch over downrange progress s, skewed slightly toward launch for realistic boost-coast look
-  const archSkew = Math.pow(s, 0.88);
-  const arch = Math.sin(archSkew * Math.PI);
-  // Combine range arch with time-based vertical liftoff envelope so vertical climb starts immediately at liftoff
-  const earlyVertical = smoothstep(liftoff, liftoff + 0.06, u) * (1 - smoothstep(0.08, 0.25, u)) * 22;
-  const mainAltitude = APOGEE_ALTITUDE_KM * Math.pow(arch, 1.18);
-  return Math.max(0, mainAltitude + earlyVertical);
+// Precompute Fritsch-Carlson monotone cubic tangents for ALTITUDE_KNOTS
+const ALT_TANGENTS: number[] = (() => {
+  const n = ALTITUDE_KNOTS.length;
+  const secants: number[] = new Array(n - 1);
+  for (let i = 0; i < n - 1; i++) {
+    const du = ALTITUDE_KNOTS[i + 1][0] - ALTITUDE_KNOTS[i][0];
+    const dh = ALTITUDE_KNOTS[i + 1][1] - ALTITUDE_KNOTS[i][1];
+    secants[i] = dh / du;
+  }
+  const m: number[] = new Array(n).fill(0);
+  m[0] = secants[0];
+  m[n - 1] = secants[n - 2];
+  for (let i = 1; i < n - 1; i++) {
+    if (secants[i - 1] * secants[i] <= 0) {
+      m[i] = 0;
+    } else {
+      m[i] = (secants[i - 1] + secants[i]) * 0.5;
+    }
+  }
+  for (let i = 0; i < n - 1; i++) {
+    const d = secants[i];
+    if (Math.abs(d) < 1e-8) {
+      m[i] = 0;
+      m[i + 1] = 0;
+    } else {
+      const a = m[i] / d;
+      const b = m[i + 1] / d;
+      const hypot = Math.hypot(a, b);
+      if (hypot > 3) {
+        const tau = 3 / hypot;
+        m[i] = tau * a * d;
+        m[i + 1] = tau * b * d;
+      }
+    }
+  }
+  return m;
+})();
+
+/**
+ * Illustrative altitude profile `h(u)` in kilometers.
+ * Evaluates the monotone cubic Hermite spline so all milestones agree exactly.
+ */
+export function computeAltitudeKm(rawU: number): number {
+  const u = clamp(rawU, 0, 1);
+  if (u <= TIMELINE_EVENTS.liftoff || u >= 1.0) return 0;
+
+  const n = ALTITUDE_KNOTS.length;
+  let idx = 0;
+  for (let i = 0; i < n - 1; i++) {
+    if (u >= ALTITUDE_KNOTS[i][0] && u <= ALTITUDE_KNOTS[i + 1][0]) {
+      idx = i;
+      break;
+    }
+  }
+
+  const [u0, y0] = ALTITUDE_KNOTS[idx];
+  const [u1, y1] = ALTITUDE_KNOTS[idx + 1];
+  const h = u1 - u0;
+  if (h <= 1e-9) return y0;
+
+  const t = (u - u0) / h;
+  const t2 = t * t;
+  const t3 = t2 * t;
+
+  const h00 = 2 * t3 - 3 * t2 + 1;
+  const h10 = t3 - 2 * t2 + t;
+  const h01 = -2 * t3 + 3 * t2;
+  const h11 = t3 - t2;
+
+  const val = h00 * y0 + h10 * h * ALT_TANGENTS[idx] + h01 * y1 + h11 * h * ALT_TANGENTS[idx + 1];
+  return Math.max(0, val);
 }
 
 /**
@@ -279,12 +375,12 @@ export function getAtmosphereLayer(altitudeKm: number): AtmosphereLayer {
 
 /**
  * Illustrative U.S. Standard Atmosphere speed of sound (m/s) as a function of
- * altitude. Above ~105 km, the mean free path of gas molecules exceeds the
- * vehicle scale, so a continuum speed of sound and Mach number are not
- * physically meaningful.
+ * altitude. Above the 100 km Kármán line (`KARMAN_LINE_ALTITUDE_KM`), the mean
+ * free path of gas molecules exceeds the vehicle scale, so a continuum speed
+ * of sound and Mach number are not physically meaningful.
  */
 export function getLocalSoundSpeedMs(altitudeKm: number): number | null {
-  if (altitudeKm > 105) return null;
+  if (altitudeKm > KARMAN_LINE_ALTITUDE_KM) return null;
   if (altitudeKm <= 11) {
     // Troposphere temperature lapse: 340.3 m/s at sea level -> 295.1 m/s at 11 km
     return THREE.MathUtils.lerp(340.3, 295.1, altitudeKm / 11);
@@ -300,19 +396,19 @@ export function getLocalSoundSpeedMs(altitudeKm: number): number | null {
     // Mesospheric cooling: 329.8 -> 269.4 m/s
     return THREE.MathUtils.lerp(329.8, 269.4, (altitudeKm - 47) / 38);
   }
-  // Upper mesosphere / lower thermosphere transition (85 -> 105 km)
-  return THREE.MathUtils.lerp(269.4, 285.0, (altitudeKm - 85) / 20);
+  // Upper mesosphere / lower thermosphere transition (85 -> 100 km Kármán line)
+  return THREE.MathUtils.lerp(269.4, 282.0, (altitudeKm - 85) / 15);
 }
 
 /**
  * Illustrative speed profile in km/h across the five flight phases:
- * - Pre-launch: 0 km/h
+ * - Pre-launch (`u <= liftoff`): 0 km/h (Mach 0.0 on launch pad)
  * - Stage 1-3 Powered Ascent: accelerates from 0 to ~24,200 km/h (~6.72 km/s)
  * - Midcourse Coast: slows as kinetic energy converts to gravitational potential
- *   energy toward apogee (~19,400 km/h at apogee), then re-accelerates on descent
- *   to ~24,600 km/h at atmospheric entry interface
- * - Atmospheric Re-entry: intense aerodynamic deceleration in the lower
- *   stratosphere/troposphere from ~24,600 km/h down to ~11,200 km/h at impact
+ *   energy toward apogee (~19,400 km/h at 780 km apogee), then re-accelerates on
+ *   descent to ~24,600 km/h at the 120 km entry interface
+ * - Atmospheric Re-entry: intense aerodynamic deceleration in the mesosphere and
+ *   stratosphere down to terminal impact visualization
  */
 export function computeVelocityKmh(u: number, altitudeKm: number): number {
   const {
@@ -328,27 +424,27 @@ export function computeVelocityKmh(u: number, altitudeKm: number): number {
   if (u >= 1.0) return 0;
 
   if (u <= stage3Burnout) {
-    // 3-stage stepped acceleration curve
     const s1 = smoothstep(liftoff, stage1Separation, u) * 7600;
     const s2 = smoothstep(stage1Separation, stage2Separation, u) * 8400;
     const s3 = smoothstep(stage2Separation, stage3Burnout, u) * 8200;
-    return s1 + s2 + s3; // reaches ~24,200 km/h at burnout
+    return s1 + s2 + s3; // reaches 24,200 km/h at Stage 3 burnout
   }
 
   if (u <= reentryInterface) {
-    // Vis-viva inspired energy exchange: slower at high altitude, faster as it falls back
-    const burnoutAlt = computeAltitudeKm(stage3Burnout);
+    // Vis-viva inspired energy exchange: slower at 780 km apogee (19,400 km/h),
+    // faster as it descends back to 120 km entry interface (24,600 km/h)
+    const burnoutAlt = 255;
     const deltaAlt = Math.max(0, altitudeKm - burnoutAlt);
     const gravityLoss = (deltaAlt / (APOGEE_ALTITUDE_KM - burnoutAlt)) * 4800;
-    const entryGain = smoothstep(0.62, reentryInterface, u) * 400;
+    const entryGain = smoothstep(0.6, reentryInterface, u) * 400;
     return 24200 - gravityLoss + entryGain;
   }
 
-  // Atmospheric re-entry deceleration (ballistic coefficient + dense lower atmosphere drag)
+  // Atmospheric re-entry deceleration below 120 km
   const highAltSpeed = 24600;
-  const dragOnset = smoothstep(reentryInterface, peakHeating, u) * 3200;
-  const denseAtmoBraking = Math.pow(smoothstep(peakHeating, 0.995, u), 1.45) * 10200;
-  return Math.max(1200, highAltSpeed - dragOnset - denseAtmoBraking);
+  const dragOnset = smoothstep(reentryInterface, peakHeating, u) * 3600;
+  const denseAtmoBraking = Math.pow(smoothstep(peakHeating, 0.998, u), 1.38) * 12400;
+  return Math.max(0, highAltSpeed - dragOnset - denseAtmoBraking);
 }
 
 /**
@@ -369,7 +465,7 @@ export function getStageForU(u: number): StageRange {
   const clamped = clamp(u, 0, 1);
   for (let i = 0; i < STAGE_RANGES.length; i++) {
     const st = STAGE_RANGES[i];
-    if (clamped <= st.endU || i === STAGE_RANGES.length - 1) {
+    if (clamped < st.endU || i === STAGE_RANGES.length - 1) {
       return st;
     }
   }
@@ -403,11 +499,9 @@ const _orthoRight = new THREE.Vector3();
 const _orthoForward = new THREE.Vector3();
 
 function buildRocketQuaternion(noseDir: THREE.Vector3, radialUp: THREE.Vector3): THREE.Quaternion {
-  // Construct an orthonormal basis where local +Y is noseDir and local +Z faces away from Earth/trajectory plane
   const yAxis = noseDir.clone().normalize();
   _orthoRight.crossVectors(yAxis, radialUp);
   if (_orthoRight.lengthSq() < 1e-6) {
-    // Vertical flight: use trajectory great-circle plane normal as reference
     _orthoRight.crossVectors(LAUNCH_UNIT_VEC, TARGET_UNIT_VEC).normalize();
   } else {
     _orthoRight.normalize();
@@ -433,14 +527,12 @@ function computeSeparatedStageState(
     };
   }
 
-  // Follow a lower ballistic arc lagging behind the main vehicle and tumbling gently
   const lagU = sepU + (currentU - sepU) * 0.72;
   const basePos = samplePositionAtU(lagU);
   const s = computeRangeProgress(lagU);
   const radialUp = sampleGreatCircleUnitVector(s);
   const planeNormal = new THREE.Vector3().crossVectors(LAUNCH_UNIT_VEC, TARGET_UNIT_VEC).normalize();
 
-  // Drop radially inward and drift slightly off-axis
   const dropUnits = Math.pow(age, 1.6) * 0.42;
   const driftUnits = age * 0.08 * lateralSign;
   const pos = basePos
@@ -478,9 +570,11 @@ export function evaluateFlightAt(rawU: number): FlightSample {
     stage3Burnout,
     reentryInterface,
     peakHeating,
+    terminalPhaseStart,
   } = TIMELINE_EVENTS;
 
   const stage = getStageForU(u);
+  const phaseProgress = clamp((u - stage.startU) / (stage.endU - stage.startU), 0, 1);
   const rangeProgress = computeRangeProgress(u);
   const altitudeKm = computeAltitudeKm(u);
   const sceneRadius = altitudeKmToSceneRadius(altitudeKm);
@@ -503,7 +597,7 @@ export function evaluateFlightAt(rawU: number): FlightSample {
     pathTangent.normalize();
   }
 
-  // Blend vehicle nose orientation from strictly vertical on the pad to the 3D velocity vector after pitch-over
+  // Blend vehicle nose orientation from vertical on the pad to the 3D velocity vector after liftoff
   const pitchOverBlend = smoothstep(liftoff, liftoff + 0.055, u);
   const noseDir = upNormal.clone().lerp(pathTangent, pitchOverBlend).normalize();
   const quaternion = buildRocketQuaternion(noseDir, upNormal);
@@ -511,9 +605,15 @@ export function evaluateFlightAt(rawU: number): FlightSample {
   const velocityKmh = computeVelocityKmh(u, altitudeKm);
   const velocityKms = velocityKmh / 3600;
   const localSoundSpeedMs = getLocalSoundSpeedMs(altitudeKm);
+
+  // Mach is defined whenever localSoundSpeedMs is available (altitude <= 100 km Kármán line).
+  // On the launch pad (velocity = 0, altitude = 0), Mach is 0.0.
   const machNumber =
-    localSoundSpeedMs !== null && u > liftoff && u < 1.0
-      ? (velocityKms * 1000) / localSoundSpeedMs
+    localSoundSpeedMs !== null ? (velocityKms * 1000) / localSoundSpeedMs : null;
+
+  const machUnavailableReason =
+    machNumber === null
+      ? 'Above the 100 km Kármán line, air density is too low to propagate sound waves.'
       : null;
 
   const downrangeKm = rangeProgress * TOTAL_GROUND_RANGE_KM;
@@ -531,7 +631,9 @@ export function evaluateFlightAt(rawU: number): FlightSample {
   let thrustIntensity = 0;
   if (u >= 0.008 && u < stage1Separation - 0.003) {
     activePropulsionStage = 1;
-    thrustIntensity = smoothstep(0.008, liftoff, u) * (1 - smoothstep(stage1Separation - 0.008, stage1Separation - 0.002, u));
+    thrustIntensity =
+      smoothstep(0.008, liftoff, u) *
+      (1 - smoothstep(stage1Separation - 0.008, stage1Separation - 0.002, u));
   } else if (u >= stage1Separation + 0.003 && u < stage2Separation - 0.003) {
     activePropulsionStage = 2;
     thrustIntensity =
@@ -551,13 +653,13 @@ export function evaluateFlightAt(rawU: number): FlightSample {
   const padSmokeIntensity =
     smoothstep(0.004, liftoff, u) * (1 - smoothstep(liftoff + 0.015, liftoff + 0.065, u));
 
-  // Re-entry plasma sheath intensity (peaks around 65-45 km altitude during hypersonic entry)
+  // Re-entry plasma sheath intensity (begins at 120 km entry interface, peaks at ~52 km)
   const plasmaRise = smoothstep(reentryInterface, peakHeating, u);
-  const plasmaFall = 1 - smoothstep(peakHeating + 0.03, 0.975, u);
-  const plasmaIntensity = u >= reentryInterface && u < 0.985 ? plasmaRise * plasmaFall : 0;
+  const plasmaFall = 1 - smoothstep(peakHeating + 0.025, 0.985, u);
+  const plasmaIntensity = u >= reentryInterface && u < 0.99 ? plasmaRise * plasmaFall : 0;
 
-  // Impact light pulse (non-destructive optical marker pulse at target zone)
-  const impactPulse = u >= 0.965 ? smoothstep(0.965, 1.0, u) : 0;
+  // Impact light pulse (non-destructive optical marker pulse during Phase 5)
+  const impactPulse = u >= terminalPhaseStart ? smoothstep(terminalPhaseStart, 1.0, u) : 0;
 
   // Separated stage drift states
   const separatedStage1 = computeSeparatedStageState(u, stage1Separation, 0.085, 1);
@@ -566,6 +668,7 @@ export function evaluateFlightAt(rawU: number): FlightSample {
 
   return {
     u,
+    phaseProgress,
     missionTimeS: u * MISSION_DURATION_S,
     stageId: stage.id,
     stageIndex: stage.index,
@@ -575,6 +678,7 @@ export function evaluateFlightAt(rawU: number): FlightSample {
     velocityKmh,
     velocityKms,
     machNumber,
+    machUnavailableReason,
     localSoundSpeedMs,
     downrangeKm,
     pathDistanceKm,

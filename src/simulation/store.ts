@@ -10,7 +10,7 @@ import { STAGE_DEFINITIONS } from './stages';
 export type PlaybackSpeed = 0.25 | 0.5 | 1 | 2 | 4;
 export type CameraMode = 'follow' | 'earth' | 'free';
 export type QualityMode = 'high' | 'reduced';
-export type MobilePanelTab = 'none' | 'telemetry' | 'science';
+export type MenuSection = 'telemetry' | 'physics' | 'controls';
 
 const isSmallMobileDevice =
   typeof window !== 'undefined' && window.innerWidth < 768;
@@ -36,11 +36,13 @@ export interface SimulationState {
   cameraSnapNonce: number;
   /** Selected science topic tab inside the educational panel (null = follow current stage default) */
   selectedConceptId: string | null;
-  /** Which floating drawer is open on mobile/tablet screens (< 1024px) */
-  mobilePanel: MobilePanelTab;
+  /** Whether the single optional Menu drawer is open */
+  menuOpen: boolean;
+  /** Active section inside the unified optional Menu drawer */
+  menuSection: MenuSection;
 
   // Actions
-  setU: (u: number, fromScrub?: boolean) => void;
+  setU: (u: number, snapCamera?: boolean) => void;
   advanceByDelta: (deltaSeconds: number) => void;
   togglePlay: () => void;
   setPlaying: (playing: boolean) => void;
@@ -53,7 +55,9 @@ export interface SimulationState {
   setQualityMode: (mode: QualityMode) => void;
   toggleQualityMode: () => void;
   setSelectedConceptId: (id: string | null) => void;
-  setMobilePanel: (panel: MobilePanelTab) => void;
+  setMenuOpen: (open: boolean) => void;
+  toggleMenu: (section?: MenuSection) => void;
+  setMenuSection: (section: MenuSection) => void;
 }
 
 export const PLAYBACK_SPEEDS: PlaybackSpeed[] = [0.25, 0.5, 1, 2, 4];
@@ -69,17 +73,19 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   qualityMode: isSmallMobileDevice ? 'reduced' : 'high',
   cameraSnapNonce: 0,
   selectedConceptId: null,
-  mobilePanel: 'none',
+  menuOpen: false,
+  menuSection: 'telemetry',
 
-  setU: (rawU, fromScrub = false) => {
+  setU: (rawU, snapCamera = false) => {
     const nextU = clamp(rawU, 0, 1);
     const nextStage = getStageForU(nextU).id;
     const prevStage = get().stageId;
     set((state) => ({
       u: nextU,
+      playing: false,
       stageId: nextStage,
       selectedConceptId: nextStage !== prevStage ? null : state.selectedConceptId,
-      cameraSnapNonce: fromScrub ? state.cameraSnapNonce + 1 : state.cameraSnapNonce,
+      cameraSnapNonce: snapCamera ? state.cameraSnapNonce + 1 : state.cameraSnapNonce,
     }));
   },
 
@@ -107,7 +113,6 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   togglePlay: () => {
     const { playing, u } = get();
     if (!playing && u >= 0.999) {
-      // Restart from beginning if user presses Play at end of timeline
       set((state) => ({
         u: 0,
         playing: true,
@@ -136,9 +141,9 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   selectStage: (targetStageId) => {
     const def = STAGE_DEFINITIONS.find((s) => s.id === targetStageId);
     if (!def) return;
-    const jumpU = targetStageId === 'launch' ? 0.008 : def.startU + 0.006;
     set((state) => ({
-      u: clamp(jumpU, 0, 1),
+      u: clamp(def.startU, 0, 1),
+      playing: false,
       stageId: targetStageId,
       selectedConceptId: null,
       cameraSnapNonce: state.cameraSnapNonce + 1,
@@ -164,8 +169,18 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
 
   setSelectedConceptId: (selectedConceptId) => set({ selectedConceptId }),
 
-  setMobilePanel: (mobilePanel) =>
-    set((state) => ({
-      mobilePanel: state.mobilePanel === mobilePanel ? 'none' : mobilePanel,
-    })),
+  setMenuOpen: (menuOpen) => set({ menuOpen }),
+
+  toggleMenu: (section) =>
+    set((state) => {
+      if (section && state.menuOpen && state.menuSection !== section) {
+        return { menuSection: section };
+      }
+      return {
+        menuOpen: !state.menuOpen,
+        menuSection: section ?? state.menuSection,
+      };
+    }),
+
+  setMenuSection: (menuSection) => set({ menuSection, menuOpen: true }),
 }));

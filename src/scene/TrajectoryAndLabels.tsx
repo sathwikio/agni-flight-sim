@@ -5,13 +5,15 @@ import { Html, Line } from '@react-three/drei';
 import {
   APOGEE_ALTITUDE_KM,
   buildTrajectoryPoints,
+  computeRangeProgress,
   EARTH_RADIUS_UNITS,
+  ENTRY_INTERFACE_ALTITUDE_KM,
   FlightSample,
+  KARMAN_LINE_ALTITUDE_KM,
   sampleGreatCircleUnitVector,
   samplePositionAtU,
   StageId,
   TIMELINE_EVENTS,
-  computeRangeProgress,
 } from '../simulation/flightModel';
 import { useSimulationStore } from '../simulation/store';
 
@@ -27,6 +29,7 @@ interface MilestoneMarker {
   subtitle: string;
   u: number;
   stageId: StageId;
+  offsetY: number;
   position: THREE.Vector3;
   surfacePos: THREE.Vector3;
 }
@@ -42,7 +45,8 @@ export const TrajectoryAndLabels: React.FC<TrajectoryAndLabelsProps> = ({ sample
     []
   );
 
-  // Precompute milestone positions along the 3D arc
+  // Precompute milestone positions along the 3D arc matching TIMELINE_EVENTS and telemetry.
+  // Entry Interface (120 km) and Kármán Line (100 km) are labeled separately with distinct vertical offsets so they never overlap.
   const milestones: MilestoneMarker[] = useMemo(() => {
     const specs: {
       id: string;
@@ -50,20 +54,23 @@ export const TrajectoryAndLabels: React.FC<TrajectoryAndLabelsProps> = ({ sample
       subtitle: string;
       u: number;
       stageId: StageId;
+      offsetY: number;
     }[] = [
       {
         id: 'launch-pad',
-        title: 'LAUNCH COMPLEX IV',
-        subtitle: 'Canister Ignition · 0 km',
+        title: 'LAUNCH PAD · 0 KM',
+        subtitle: 'Stationary · Mach 0.0',
         u: 0.0,
         stageId: 'launch',
+        offsetY: -26,
       },
       {
         id: 'stage-sep',
-        title: 'BOOST BURNOUT (MECO)',
-        subtitle: 'Stage 3 Cutoff · ~255 km',
+        title: 'MECO · 255 KM',
+        subtitle: 'Stage 3 Burnout',
         u: TIMELINE_EVENTS.stage3Burnout,
-        stageId: 'ascent',
+        stageId: 'midcourse',
+        offsetY: -26,
       },
       {
         id: 'apogee',
@@ -71,20 +78,31 @@ export const TrajectoryAndLabels: React.FC<TrajectoryAndLabelsProps> = ({ sample
         subtitle: 'Midcourse Peak Altitude',
         u: TIMELINE_EVENTS.apogee,
         stageId: 'midcourse',
+        offsetY: -26,
       },
       {
         id: 'reentry',
-        title: 'ENTRY INTERFACE',
-        subtitle: 'Bow-Shock Plasma Onset · ~120 km',
+        title: `ENTRY INTERFACE · ${ENTRY_INTERFACE_ALTITUDE_KM} KM`,
+        subtitle: 'Aerodynamic Heating Onset',
         u: TIMELINE_EVENTS.reentryInterface,
         stageId: 'reentry',
+        offsetY: -36,
+      },
+      {
+        id: 'karman',
+        title: `KÁRMÁN LINE · ${KARMAN_LINE_ALTITUDE_KM} KM`,
+        subtitle: 'Space / Acoustics Boundary',
+        u: TIMELINE_EVENTS.karmanLine,
+        stageId: 'reentry',
+        offsetY: 22,
       },
       {
         id: 'target',
-        title: 'TARGET INSTRUMENTATION ZONE',
-        subtitle: 'Uninhabited Ocean Range',
+        title: 'TARGET ZONE · 0 KM',
+        subtitle: 'Ocean Instrumentation Range',
         u: 1.0,
         stageId: 'impact',
+        offsetY: -26,
       },
     ];
 
@@ -96,7 +114,6 @@ export const TrajectoryAndLabels: React.FC<TrajectoryAndLabelsProps> = ({ sample
     });
   }, []);
 
-  // Dynamic geometry for the traversed portion of the trajectory and nadir drop-line
   const activeResources = useMemo(() => {
     const activeGeo = new THREE.BufferGeometry();
     const positions = new Float32Array((SEGMENTS + 2) * 3);
@@ -119,7 +136,7 @@ export const TrajectoryAndLabels: React.FC<TrajectoryAndLabelsProps> = ({ sample
       opacity: 0.55,
     });
 
-    const markerDotGeo = new THREE.SphereGeometry(0.026, 16, 16);
+    const markerDotGeo = new THREE.SphereGeometry(0.016, 16, 16);
     const markerDotMat = new THREE.MeshBasicMaterial({
       color: '#fb923c',
     });
@@ -151,7 +168,6 @@ export const TrajectoryAndLabels: React.FC<TrajectoryAndLabelsProps> = ({ sample
   useFrame(() => {
     const sample = sampleRef.current;
 
-    // Update traversed trajectory polyline up to current sample.u
     if (activeLineRef.current) {
       const posAttr = activeResources.activeGeo.getAttribute(
         'position'
@@ -163,14 +179,12 @@ export const TrajectoryAndLabels: React.FC<TrajectoryAndLabelsProps> = ({ sample
         posAttr.setXYZ(count, pt.x, pt.y, pt.z);
         count++;
       }
-      // Exact tip at current rocket position
       posAttr.setXYZ(count, sample.position.x, sample.position.y, sample.position.z);
       count++;
       activeResources.activeGeo.setDrawRange(0, count);
       posAttr.needsUpdate = true;
     }
 
-    // Update live nadir altitude drop line from rocket to surface
     if (nadirLineRef.current) {
       const nadirAttr = activeResources.nadirGeo.getAttribute(
         'position'
@@ -186,7 +200,6 @@ export const TrajectoryAndLabels: React.FC<TrajectoryAndLabelsProps> = ({ sample
     }
   });
 
-  // Convert Vector3 arrays into flat tuple arrays for Drei <Line>
   const fullArcTuples = useMemo(
     () => trajectoryPts.map((p) => [p.x, p.y, p.z] as [number, number, number]),
     [trajectoryPts]
@@ -200,7 +213,6 @@ export const TrajectoryAndLabels: React.FC<TrajectoryAndLabelsProps> = ({ sample
     <group name="trajectory-and-labels">
       {showTrajectory && (
         <group>
-          {/* Full projected orbital path */}
           <Line
             points={fullArcTuples}
             color="#64748b"
@@ -212,7 +224,6 @@ export const TrajectoryAndLabels: React.FC<TrajectoryAndLabelsProps> = ({ sample
             gapSize={0.08}
           />
 
-          {/* Ground-track great-circle arc across the Indian Ocean */}
           <Line
             points={groundTrackTuples}
             color="#38bdf8"
@@ -221,36 +232,35 @@ export const TrajectoryAndLabels: React.FC<TrajectoryAndLabelsProps> = ({ sample
             opacity={0.28}
           />
 
-          {/* Active traversed trajectory segment */}
           <primitive
             ref={activeLineRef}
             object={new THREE.Line(activeResources.activeGeo, activeResources.activeMat)}
           />
 
-          {/* Live vertical altitude drop-line from vehicle to nadir point on Earth */}
           <primitive
             ref={nadirLineRef}
             object={new THREE.Line(activeResources.nadirGeo, activeResources.nadirMat)}
           />
 
-          {/* Milestone dots & altitude pillars */}
           {milestones.map((m) => (
             <group key={m.id}>
-              <mesh
-                position={m.position}
-                geometry={activeResources.markerDotGeo}
-                material={activeResources.markerDotMat}
-              />
+              {m.u > 0.05 && m.u < 0.99 && (
+                <mesh
+                  position={m.position}
+                  geometry={activeResources.markerDotGeo}
+                  material={activeResources.markerDotMat}
+                />
+              )}
               {m.u > 0.05 && m.u < 0.95 && (
                 <Line
                   points={[
                     [m.surfacePos.x, m.surfacePos.y, m.surfacePos.z],
                     [m.position.x, m.position.y, m.position.z],
                   ]}
-                  color="#fb923c"
+                  color={m.id === 'karman' ? '#38bdf8' : '#fb923c'}
                   lineWidth={1}
                   transparent
-                  opacity={0.24}
+                  opacity={0.25}
                 />
               )}
             </group>
@@ -261,7 +271,7 @@ export const TrajectoryAndLabels: React.FC<TrajectoryAndLabelsProps> = ({ sample
       {showFlightLabels && (
         <group>
           {milestones.map((m) => {
-            const isPassed = currentU >= m.u - 0.01;
+            const isPassed = currentU >= m.u - 0.004;
             return (
               <Html
                 key={m.id}
@@ -273,24 +283,27 @@ export const TrajectoryAndLabels: React.FC<TrajectoryAndLabelsProps> = ({ sample
                 <button
                   type="button"
                   onClick={() => setU(m.u, true)}
-                  className={`group flex flex-col items-start rounded border px-2 py-1 text-left backdrop-blur-md transition-all duration-200 select-none ${
+                  className={`group flex flex-col items-start rounded-md border px-2 py-1 text-left backdrop-blur-md transition-all duration-200 select-none ${
                     isPassed
-                      ? 'border-orange-500/60 bg-slate-950/80 text-white shadow-[0_0_15px_rgba(249,115,22,0.2)]'
-                      : 'border-slate-700/60 bg-slate-950/65 text-slate-300 hover:border-orange-400/60 hover:text-white'
+                      ? 'border-orange-500/70 bg-slate-950/88 text-white shadow-[0_0_15px_rgba(249,115,22,0.2)]'
+                      : 'border-slate-700/70 bg-slate-950/78 text-slate-200 hover:border-orange-400/70 hover:text-white'
                   }`}
-                  style={{ transform: 'translateY(-22px)', minWidth: '132px' }}
+                  style={{
+                    transform: `translateY(${m.offsetY}px)`,
+                    minWidth: '136px',
+                  }}
                 >
-                  <div className="flex items-center gap-1.5 font-mono text-[9px] tracking-widest uppercase">
+                  <div className="flex items-center gap-1.5 font-mono text-[10px] font-semibold tracking-wider uppercase whitespace-nowrap">
                     <span
                       className={`h-1.5 w-1.5 rounded-full ${
-                        isPassed ? 'bg-orange-400' : 'bg-slate-500'
+                        isPassed ? 'bg-orange-400' : 'bg-slate-400'
                       }`}
                     />
-                    <span className={isPassed ? 'text-orange-300' : 'text-slate-400'}>
+                    <span className={isPassed ? 'text-orange-300' : 'text-slate-200'}>
                       {m.title}
                     </span>
                   </div>
-                  <div className="mt-0.5 text-[10px] leading-tight text-slate-300/90">
+                  <div className="mt-0.5 text-[10px] leading-tight text-slate-300 whitespace-nowrap">
                     {m.subtitle}
                   </div>
                 </button>

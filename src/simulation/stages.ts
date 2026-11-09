@@ -14,6 +14,7 @@ export interface StageDefinition {
   index: number;
   code: string;
   name: string;
+  shortName: string;
   subtitle: string;
   startU: number;
   endU: number;
@@ -23,7 +24,7 @@ export interface StageDefinition {
   primaryConceptId: string;
   secondaryConceptId?: string;
   overview: string;
-  keyEvents: { label: string; u: number }[];
+  keyEvents: { label: string; u: number; altitudeLabel: string }[];
 }
 
 /**
@@ -44,7 +45,7 @@ export const SCIENCE_CONCEPTS: Record<string, ScienceConcept> = {
   'multi-stage': {
     id: 'multi-stage',
     title: 'Why Rockets Use Multiple Stages',
-    shortLabel: 'Multi-Stage Staging & Tsiolkovsky',
+    shortLabel: 'Multi-Stage Staging',
     formula: 'Δv = I_sp · g_0 · ln(m_0 / m_f)',
     summary:
       'By the Tsiolkovsky rocket equation, a vehicle’s velocity change (Δv) depends logarithmically on the ratio of initial mass to final dry mass. Carrying empty propellant casings all the way to space wastes thrust accelerating dead structural weight.',
@@ -54,7 +55,7 @@ export const SCIENCE_CONCEPTS: Record<string, ScienceConcept> = {
   'curved-trajectory': {
     id: 'curved-trajectory',
     title: 'Why Ballistic Trajectories Curve',
-    shortLabel: 'Curved Ballistic Trajectories',
+    shortLabel: 'Curved Trajectories',
     formula: 'r(θ) = p / (1 + e · cos θ)',
     summary:
       'Long-range ballistic trajectories curve for two reasons: early in ascent the rocket executes a gravity turn (pitching over so thrust adds horizontal speed while minimizing aerodynamic side-loads), and after burnout the vehicle follows a Keplerian ellipse around Earth’s center of mass.',
@@ -64,30 +65,30 @@ export const SCIENCE_CONCEPTS: Record<string, ScienceConcept> = {
   'gravity-midcourse': {
     id: 'gravity-midcourse',
     title: 'How Gravity Affects Midcourse Flight',
-    shortLabel: 'Gravity in Midcourse Coast',
+    shortLabel: 'Midcourse Gravity',
     formula: 'v² = μ · (2 / r - 1 / a)',
     summary:
       'During the unpowered midcourse phase above the atmosphere, the payload is in pure free-fall under gravity. Even at 780 km altitude, Earth’s gravitational acceleration is still ~78% as strong as at sea level (g ≈ 7.77 m/s²).',
     detail:
-      'As the vehicle climbs toward apogee, gravity continuously trades kinetic energy for gravitational potential energy, slowing the vehicle down. Once past apogee, gravity accelerates the vehicle back toward Earth along the descending branch of the ellipse.',
+      'As the vehicle climbs toward apogee, gravity continuously trades kinetic energy for gravitational potential energy, slowing the vehicle from 24,200 km/h at burnout to 19,400 km/h at apogee. Past apogee, gravity accelerates the vehicle back toward Earth along the descending branch of the ellipse.',
   },
   'reentry-heating': {
     id: 'reentry-heating',
     title: 'Why Atmospheric Re-entry Generates Intense Heat',
-    shortLabel: 'Shock-Layer Compression Heating',
+    shortLabel: 'Re-entry Heating',
     formula: 'q_conv ∝ √ρ · v³ / √R_n',
     summary:
-      'Contrary to popular belief, re-entry heating is caused primarily by adiabatic shock-wave compression, not surface skin friction. Traveling at Mach 20+, the air ahead of the vehicle cannot move out of the way faster than the local speed of sound.',
+      'Re-entry heating begins near the ~120 km Entry Interface and intensifies below the 100 km Kármán line. It is caused primarily by adiabatic shock-wave compression, not surface skin friction.',
     detail:
-      'A detached bow shock forms ahead of the blunt nose cone, compressing air molecules to extreme pressures and temperatures (6,000–8,000 K) and ionizing nitrogen and oxygen into a glowing plasma sheath. A blunt nose radius (R_n) pushes the shock wave slightly off the wall, while an ablative carbon-phenolic heat shield chars and vaporizes to carry heat away.',
+      'A detached bow shock forms ahead of the blunt nose cone, compressing air molecules to extreme temperatures (6,000–8,000 K) and ionizing nitrogen and oxygen into a glowing plasma sheath. A blunt nose radius (R_n) pushes the shock wave slightly off the wall, while an ablative carbon-phenolic heat shield chars to carry heat away.',
   },
   'atmospheric-drag': {
     id: 'atmospheric-drag',
     title: 'How Atmospheric Drag Changes Speed',
-    shortLabel: 'Aerodynamic Drag & Ballistic Coefficient',
+    shortLabel: 'Atmospheric Drag',
     formula: 'a_drag = ½ · ρ(h) · v² / β ,   β = m / (C_d · A)',
     summary:
-      'As the re-entry vehicle plunges below 60 km into exponentially denser air, aerodynamic drag rises rapidly with dynamic pressure (½ρv²), causing peak deceleration of tens of g’s and bleeding off more than half of the vehicle’s kinetic energy.',
+      'As the re-entry vehicle plunges below 60 km into exponentially denser air, aerodynamic drag rises rapidly with dynamic pressure (½ρv²), causing peak deceleration and bleeding off more than half of the vehicle’s kinetic energy.',
     detail:
       'How rapidly the vehicle slows depends on its ballistic coefficient (β): the ratio of mass to drag area. High-β slender cones retain speed deeper into the stratosphere, whereas lower-β shapes decelerate higher in the atmosphere.',
   },
@@ -99,19 +100,20 @@ export const STAGE_DEFINITIONS: StageDefinition[] = [
     index: 0,
     code: 'PHASE 01',
     name: 'Launch',
-    subtitle: 'Canister Ejection, Ignition & Liftoff',
+    shortName: '1. Launch',
+    subtitle: 'Canister Ignition & Liftoff',
     startU: STAGE_RANGES[0].startU,
     endU: STAGE_RANGES[0].endU,
-    defaultU: 0.025,
+    defaultU: 0.0,
     timeRangeLabel: 'T+00:00 → T+01:07',
-    altitudeBandLabel: '0 km → 24 km (Troposphere / Lower Stratosphere)',
+    altitudeBandLabel: '0 km → 24 km (Troposphere / Stratosphere)',
     primaryConceptId: 'solid-propulsion',
     secondaryConceptId: 'curved-trajectory',
     overview:
-      'First-stage solid booster ignites inside the launch complex, building chamber pressure before clearing the tower and initiating a gentle pitch-over maneuver downrange.',
+      'First-stage solid booster ignites inside the launch complex at sea level (0 km, Mach 0.0), building chamber pressure before clearing the tower at T+00:31 and initiating a gentle pitch-over maneuver downrange.',
     keyEvents: [
-      { label: 'Booster Ignition', u: TIMELINE_EVENTS.ignitionStart + 0.008 },
-      { label: 'Liftoff', u: TIMELINE_EVENTS.liftoff },
+      { label: 'Pad Pre-Ignition', u: 0.0, altitudeLabel: '0.0 km' },
+      { label: 'Liftoff', u: TIMELINE_EVENTS.liftoff, altitudeLabel: '0.0 km' },
     ],
   },
   {
@@ -119,20 +121,21 @@ export const STAGE_DEFINITIONS: StageDefinition[] = [
     index: 1,
     code: 'PHASE 02',
     name: 'Powered Ascent',
-    subtitle: 'Three-Stage Boost & Gravity Turn',
+    shortName: '2. Ascent',
+    subtitle: 'Three-Stage Solid Boost & Gravity Turn',
     startU: STAGE_RANGES[1].startU,
     endU: STAGE_RANGES[1].endU,
-    defaultU: 0.16,
+    defaultU: STAGE_RANGES[1].startU,
     timeRangeLabel: 'T+01:07 → T+04:12',
     altitudeBandLabel: '24 km → 255 km (Stratosphere → Thermosphere)',
     primaryConceptId: 'multi-stage',
     secondaryConceptId: 'solid-propulsion',
     overview:
-      'Sequential burnout and separation of Stages 1, 2, and 3. As ambient atmospheric pressure drops near vacuum, the exhaust plume expands into a wide under-expanded fan.',
+      'Sequential burnout and separation of Stages 1, 2, and 3, crossing the 100 km Kármán line during Stage 2 burn and reaching Stage 3 burnout (MECO) at 255 km altitude.',
     keyEvents: [
-      { label: 'Stage 1 Separation', u: TIMELINE_EVENTS.stage1Separation },
-      { label: 'Stage 2 Separation & Shroud Jettison', u: TIMELINE_EVENTS.stage2Separation },
-      { label: 'Stage 3 Burnout (MECO)', u: TIMELINE_EVENTS.stage3Burnout },
+      { label: 'Stage 1 Separation', u: TIMELINE_EVENTS.stage1Separation, altitudeLabel: '68 km' },
+      { label: 'Stage 2 Sep & Fairing', u: TIMELINE_EVENTS.stage2Separation, altitudeLabel: '150 km' },
+      { label: 'Stage 3 Burnout (MECO)', u: TIMELINE_EVENTS.stage3Burnout, altitudeLabel: '255 km' },
     ],
   },
   {
@@ -140,19 +143,20 @@ export const STAGE_DEFINITIONS: StageDefinition[] = [
     index: 2,
     code: 'PHASE 03',
     name: 'Midcourse Flight',
-    subtitle: 'Sub-Orbital Elliptical Coast Through Space',
+    shortName: '3. Midcourse',
+    subtitle: 'Sub-Orbital Elliptical Coast in Space',
     startU: STAGE_RANGES[2].startU,
     endU: STAGE_RANGES[2].endU,
-    defaultU: 0.54,
-    timeRangeLabel: 'T+04:12 → T+11:42',
-    altitudeBandLabel: '255 km → 780 km Apogee → 120 km',
+    defaultU: TIMELINE_EVENTS.apogee,
+    timeRangeLabel: 'T+04:12 → T+12:18',
+    altitudeBandLabel: '255 km → 780 km Apogee → 120 km Entry Interface',
     primaryConceptId: 'gravity-midcourse',
     secondaryConceptId: 'curved-trajectory',
     overview:
-      'With all propulsion stages expended and separated, the re-entry vehicle coasts silently in vacuum along an elliptical Keplerian arc, reaching a 780 km illustrative apogee.',
+      'With all propulsion stages expended and separated, the re-entry vehicle coasts in vacuum along an elliptical Keplerian arc, reaching a 780 km illustrative apogee before descending to the 120 km Entry Interface.',
     keyEvents: [
-      { label: 'Apogee (780 km Peak Altitude)', u: TIMELINE_EVENTS.apogee },
-      { label: 'Atmospheric Entry Interface (~120 km)', u: TIMELINE_EVENTS.reentryInterface },
+      { label: 'Midcourse Coast Start', u: TIMELINE_EVENTS.stage3Burnout, altitudeLabel: '255 km' },
+      { label: 'Apogee (Peak Altitude)', u: TIMELINE_EVENTS.apogee, altitudeLabel: '780 km' },
     ],
   },
   {
@@ -160,18 +164,21 @@ export const STAGE_DEFINITIONS: StageDefinition[] = [
     index: 3,
     code: 'PHASE 04',
     name: 'Atmospheric Re-entry',
-    subtitle: 'Hypersonic Bow Shock & Plasma Sheath',
+    shortName: '4. Re-entry',
+    subtitle: '120 km Entry Interface, 100 km Kármán Line & Plasma',
     startU: STAGE_RANGES[3].startU,
     endU: STAGE_RANGES[3].endU,
-    defaultU: 0.875,
-    timeRangeLabel: 'T+11:42 → T+14:19',
-    altitudeBandLabel: '120 km → 18 km (Thermosphere → Stratosphere)',
+    defaultU: STAGE_RANGES[3].startU,
+    timeRangeLabel: 'T+12:18 → T+14:19',
+    altitudeBandLabel: '120 km Entry Interface → 100 km Kármán → 18 km',
     primaryConceptId: 'reentry-heating',
     secondaryConceptId: 'atmospheric-drag',
     overview:
-      'Entering the denser mesosphere and stratosphere at hypersonic speed compresses air ahead of the blunt nose tip into an incandescent ionized plasma sheath.',
+      'The vehicle crosses the illustrative Entry Interface at 120 km where initial bow-shock ionization begins, passes the 100 km Kármán line where continuum acoustics (Mach number) resumes, and reaches peak plasma heating near 52 km.',
     keyEvents: [
-      { label: 'Peak Plasma Heating & Deceleration', u: TIMELINE_EVENTS.peakHeating },
+      { label: 'Entry Interface', u: TIMELINE_EVENTS.reentryInterface, altitudeLabel: '120 km' },
+      { label: 'Kármán Line', u: TIMELINE_EVENTS.karmanLine, altitudeLabel: '100 km' },
+      { label: 'Peak Heating', u: TIMELINE_EVENTS.peakHeating, altitudeLabel: '52 km' },
     ],
   },
   {
@@ -179,18 +186,20 @@ export const STAGE_DEFINITIONS: StageDefinition[] = [
     index: 4,
     code: 'PHASE 05',
     name: 'Impact Visualization',
+    shortName: '5. Target',
     subtitle: 'Dense-Air Braking & Target Zone Arrival',
     startU: STAGE_RANGES[4].startU,
     endU: STAGE_RANGES[4].endU,
-    defaultU: 0.992,
+    defaultU: STAGE_RANGES[4].startU,
     timeRangeLabel: 'T+14:19 → T+15:00',
     altitudeBandLabel: '18 km → 0 km (Troposphere → Sea Level)',
     primaryConceptId: 'atmospheric-drag',
     secondaryConceptId: 'reentry-heating',
     overview:
-      'Lower-atmosphere drag rapidly decelerates the vehicle as it reaches the fictional, uninhabited ocean instrumentation zone, indicated by a telemetry marker and optical pulse.',
+      'Lower-atmosphere aerodynamic drag rapidly decelerates the vehicle as it reaches the fictional, uninhabited ocean instrumentation zone at 0 km, indicated by a non-destructive telemetry marker and optical pulse.',
     keyEvents: [
-      { label: 'Target Zone Optical Marker', u: TIMELINE_EVENTS.impact },
+      { label: 'Terminal Descent', u: TIMELINE_EVENTS.terminalPhaseStart, altitudeLabel: '18 km' },
+      { label: 'Target Zone Arrival', u: TIMELINE_EVENTS.impact, altitudeLabel: '0.0 km' },
     ],
   },
 ];

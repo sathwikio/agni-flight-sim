@@ -359,7 +359,7 @@ export const OptionalMenuDrawer: React.FC = () => {
                       fontSize="8.5"
                       fontFamily="JetBrains Mono, monospace"
                     >
-                      100 km Kármán Line (Space Boundary)
+                      100 km Kármán Line (Conventional Space Boundary)
                     </text>
 
                     {/* Ground baseline */}
@@ -475,7 +475,7 @@ export const OptionalMenuDrawer: React.FC = () => {
                           N/A (&gt;100 km Space)
                         </div>
                         <div className="mt-0.5 text-[11px] leading-snug text-slate-300">
-                          Unavailable above the 100 km Kármán line (no continuum sound speed).
+                          Not displayed above 100 km (model simplification above conventional space boundary).
                         </div>
                       </>
                     )}
@@ -537,15 +537,16 @@ export const OptionalMenuDrawer: React.FC = () => {
                 {/* Clear Explanation of Mach Availability & Kármán Line vs Entry Interface */}
                 <div className="rounded border border-slate-800 bg-slate-950/85 p-3 text-xs leading-relaxed text-slate-300">
                   <div className="font-mono text-[11px] font-semibold text-orange-400 uppercase">
-                    Why Mach Is Unavailable Above 100 km
+                    Why Mach Is Not Displayed Above 100 km
                   </div>
                   <p className="mt-1">
-                    Mach number (<span className="font-mono text-white">M = v / a</span>) requires a denseenough gas medium to propagate pressure waves at the local speed of sound{' '}
-                    <span className="font-mono text-white">a = √(γ·R·T)</span>.
+                    On the launch pad (<span className="font-mono text-white">0 km/h</span>), the vehicle is stationary in sea-level air, so speed is{' '}
+                    <span className="font-mono text-white">Mach 0.0</span>. Below 100 km, Mach is computed from local sound speed{' '}
+                    <span className="font-mono text-white">M = v / a</span>.
                   </p>
                   <p className="mt-1.5">
-                    • <strong>100 km Kármán Line:</strong> Internationally recognized boundary of space; above ~100 km the mean free path of air molecules is too large for continuum sound waves, so Mach is listed as <strong>N/A</strong>.
-                    <br />• <strong>120 km Entry Interface:</strong> Altitude where a descending hypersonic vehicle first encounters noticeable free-molecular heating and bow-shock ionization.
+                    • <strong>100 km Kármán Line:</strong> A conventional boundary of space. Real atmospheric density fades gradually with altitude; as a simplifying choice in this model, the app stops displaying Mach above 100 km (shown as <strong>N/A</strong>).
+                    <br />• <strong>120 km Entry Interface:</strong> Illustrative altitude where a descending hypersonic vehicle first encounters noticeable aerodynamic heating and bow-shock ionization.
                   </p>
                 </div>
               </>
@@ -709,12 +710,12 @@ export const OptionalMenuDrawer: React.FC = () => {
                   <div className="flex items-center justify-between font-mono text-xs font-semibold text-white uppercase">
                     <span>Playback Speed</span>
                     <span className="text-orange-400">
-                      {speed}× ({speed * TIME_COMPRESSION_AT_1X}× real mission time)
+                      {speed}× ({speed * TIME_COMPRESSION_AT_1X}× real time)
                     </span>
                   </div>
                   <p className="mt-1 text-xs leading-relaxed text-slate-300">
-                    The complete 15-minute (900 s) illustrative flight is compressed to{' '}
-                    <strong>75 seconds at 1×</strong> ({TIME_COMPRESSION_AT_1X}× real mission time) so you can observe the entire sub-orbital arc comfortably. Choose <strong>0.25×</strong> (3× real time) for slow-motion stage separation inspection.
+                    The complete 15-minute (900 s) illustrative flight runs in{' '}
+                    <strong>75 seconds at 1×</strong> ({TIME_COMPRESSION_AT_1X}× real time) so you can view the full trajectory comfortably. At <strong>0.25×</strong>, playback runs at <strong>3× real time</strong> (300 seconds total) for slower inspection of stage separations and re-entry.
                   </p>
                   <div
                     role="group"
@@ -723,18 +724,26 @@ export const OptionalMenuDrawer: React.FC = () => {
                   >
                     {PLAYBACK_SPEEDS.map((s) => {
                       const active = speed === s;
+                      const realTimeMult = s * TIME_COMPRESSION_AT_1X;
                       return (
                         <button
                           key={s}
                           type="button"
                           onClick={() => setSpeed(s)}
-                          className={`rounded border py-1.5 font-mono text-xs transition-colors ${
+                          className={`flex flex-col items-center justify-center rounded border py-1.5 font-mono transition-colors ${
                             active
                               ? 'border-orange-500 bg-orange-500 text-slate-950 font-semibold'
                               : 'border-slate-800 bg-slate-900 text-slate-200 hover:border-slate-700'
                           }`}
                         >
-                          {s}×
+                          <span className="text-xs">{s}×</span>
+                          <span
+                            className={`text-[9px] ${
+                              active ? 'text-slate-900 font-medium' : 'text-slate-400'
+                            }`}
+                          >
+                            {realTimeMult}× real
+                          </span>
                         </button>
                       );
                     })}

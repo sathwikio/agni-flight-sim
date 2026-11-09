@@ -56,7 +56,7 @@ export const TARGET_ZONE: LatLon = {
 
 export const APOGEE_ALTITUDE_KM = 780; // Illustrative lofted apogee
 export const ENTRY_INTERFACE_ALTITUDE_KM = 120; // Illustrative atmospheric entry interface
-export const KARMAN_LINE_ALTITUDE_KM = 100; // Internationally recognized space boundary
+export const KARMAN_LINE_ALTITUDE_KM = 100; // Conventional boundary of space
 
 /**
  * Normalized timeline landmarks (u in [0, 1]).
@@ -73,7 +73,7 @@ export const TIMELINE_EVENTS = {
   stage3Burnout: 0.28, // End of powered ascent (255 km) / start of midcourse free-flight
   apogee: 0.53, // Exact peak altitude: 780.0 km
   reentryInterface: 0.82, // Exact atmospheric entry interface: 120.0 km (Start of Phase 4)
-  karmanLine: 0.845, // Exact Kármán line: 100.0 km (Acoustics / Mach boundary)
+  karmanLine: 0.845, // Exact Kármán line: 100.0 km (Conventional boundary of space)
   peakHeating: 0.895, // Peak bow-shock plasma heating & deceleration (~52 km)
   terminalPhaseStart: 0.955, // Start of Phase 5 Impact Visualization (18.0 km)
   impact: 1.0, // Target Zone arrival (0.0 km)
@@ -375,9 +375,9 @@ export function getAtmosphereLayer(altitudeKm: number): AtmosphereLayer {
 
 /**
  * Illustrative U.S. Standard Atmosphere speed of sound (m/s) as a function of
- * altitude. Above the 100 km Kármán line (`KARMAN_LINE_ALTITUDE_KM`), the mean
- * free path of gas molecules exceeds the vehicle scale, so a continuum speed
- * of sound and Mach number are not physically meaningful.
+ * altitude. The 100 km Kármán line (`KARMAN_LINE_ALTITUDE_KM`) is a conventional
+ * boundary of space; as a simplifying choice in this model, the simulator stops
+ * displaying Mach numbers above 100 km.
  */
 export function getLocalSoundSpeedMs(altitudeKm: number): number | null {
   if (altitudeKm > KARMAN_LINE_ALTITUDE_KM) return null;
@@ -613,7 +613,7 @@ export function evaluateFlightAt(rawU: number): FlightSample {
 
   const machUnavailableReason =
     machNumber === null
-      ? 'Above the 100 km Kármán line, air density is too low to propagate sound waves.'
+      ? '100 km is a conventional boundary of space; this simulator stops displaying Mach above 100 km as a simplifying model choice.'
       : null;
 
   const downrangeKm = rangeProgress * TOTAL_GROUND_RANGE_KM;

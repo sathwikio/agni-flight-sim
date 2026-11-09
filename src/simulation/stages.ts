@@ -174,7 +174,7 @@ export const STAGE_DEFINITIONS: StageDefinition[] = [
     primaryConceptId: 'reentry-heating',
     secondaryConceptId: 'atmospheric-drag',
     overview:
-      'The vehicle crosses the illustrative Entry Interface at 120 km where initial bow-shock ionization begins, passes the 100 km Kármán line where continuum acoustics (Mach number) resumes, and reaches peak plasma heating near 52 km.',
+      'The vehicle crosses the illustrative Entry Interface at 120 km where initial bow-shock ionization begins, passes the 100 km Kármán line (a conventional boundary of space where this simplified model resumes displaying Mach numbers), and reaches peak plasma heating near 52 km.',
     keyEvents: [
       { label: 'Entry Interface', u: TIMELINE_EVENTS.reentryInterface, altitudeLabel: '120 km' },
       { label: 'Kármán Line', u: TIMELINE_EVENTS.karmanLine, altitudeLabel: '100 km' },

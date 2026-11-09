@@ -91,7 +91,7 @@ export const TrajectoryAndLabels: React.FC<TrajectoryAndLabelsProps> = ({ sample
       {
         id: 'karman',
         title: `KÁRMÁN LINE · ${KARMAN_LINE_ALTITUDE_KM} KM`,
-        subtitle: 'Space / Acoustics Boundary',
+        subtitle: 'Conventional Boundary of Space',
         u: TIMELINE_EVENTS.karmanLine,
         stageId: 'reentry',
         offsetY: 22,
